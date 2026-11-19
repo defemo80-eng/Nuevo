@@ -22,20 +22,41 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar Gradle 9.3.1
+      - name: Configurar Android SDK 36.1 y Gradle 9.3.1
         run: |
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK_DIR" ] || [ ! -w "$SDK_DIR" ]; then
+            SDK_DIR="$RUNNER_TEMP/android-sdk"
+            mkdir -p "$SDK_DIR"
+          fi
+          SDKMANAGER="$(command -v sdkmanager 2>/dev/null || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_DIR" /usr/local/lib/android/sdk -name sdkmanager -type f 2>/dev/null | head -n1 || true)"
+          fi
+          if [ -z "$SDKMANAGER" ]; then
+            mkdir -p "$SDK_DIR/cmdline-tools"
+            curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/cmdline-tools.zip"
+            unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$SDK_DIR/cmdline-tools"
+            mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
+            SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "$SDK_DIR/platform-tools" >> "$GITHUB_PATH"
+
+          set +o pipefail
+          yes | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
+          yes | "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "platforms;android-36.1" "build-tools;36.0.0"
+          set -o pipefail
+
           mkdir -p "$RUNNER_TEMP/gradle"
           curl -fsSL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o "$RUNNER_TEMP/gradle.zip"
           unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP/gradle"
           echo "$RUNNER_TEMP/gradle/gradle-9.3.1/bin" >> "$GITHUB_PATH"
 
-      - name: Preparar Android SDK 36.1 y debug.keystore
+      - name: Preparar debug.keystore
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          yes | sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" >/dev/null
           if [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           else
