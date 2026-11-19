@@ -1,0 +1,6 @@
+{
+  "name": "DETFLIX",
+  "description": "Plataforma de streaming cinematográfico DETFLIX con membresías mensuales por código, catálogo sincronizado y panel administrativo web independiente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

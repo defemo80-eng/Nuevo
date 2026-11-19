@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Colección de administradores (solo modificable vía Firebase Admin SDK / Cloud Functions)
+    match /admins/{adminUid} {
+      allow get: if isOwner(adminUid) || isAdmin();
+      allow list, write: if false;
+    }
+
+    // Usuarios: el cliente crea/lee su propio perfil pero NUNCA puede modificar isSuspended ni roles
+    match /users/{userId} {
+      allow get: if (isOwner(userId) || isAdmin()) && isValidId(userId);
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       request.resource.data.uid == request.auth.uid &&
+                       request.resource.data.isSuspended == false &&
+                       request.resource.data.email is string &&
+                       request.resource.data.displayName is string &&
+                       request.resource.data.createdAt is timestamp;
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.isSuspended == resource.data.isSuspended &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+      );
+      allow delete: if false;
+    }
+
+    // Membresías: SOLO lectura para el propietario o admin. Escritura EXCLUSIVA desde Cloud Functions.
+    match /memberships/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // Códigos de acceso: NUNCA accesibles en listado público por clientes; solo admin o Cloud Functions.
+    match /access_codes/{codeId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Pagos: exclusivamente administrativos / servidor
+    match /payments/{paymentId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Catálogo y categorías: lectura para usuarios autenticados, escritura solo admin
+    match /content/{contentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Historial de reproducción y Mi Lista: aislados por userId
+    match /watch_history/{historyId} {
+      allow get, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create, update: if isSignedIn() &&
+                               request.resource.data.userId == request.auth.uid &&
+                               request.resource.data.contentId is string &&
+                               request.resource.data.positionMs is int;
+    }
+
+    match /favorites/{favoriteId} {
+      allow get, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.contentId is string;
+    }
+
+    // Notificaciones: lectura para su destinatario o GLOBAL, escritura solo admin/servidor
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'GLOBAL' || isAdmin());
+      allow update: if isSignedIn() &&
+                       resource.data.userId == request.auth.uid &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow create, delete: if isAdmin();
+    }
+
+    match /admin_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /app_settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

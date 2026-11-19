@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">DETFLIX</string>
+    <string name="detflix_tagline">Cine, series y documentales sin límites</string>
+    <string name="nav_home">Inicio</string>
+    <string name="nav_search">Buscar</string>
+    <string name="nav_my_list">Mi Lista</string>
+    <string name="nav_membership">Membresía</string>
+    <string name="nav_profile">Perfil</string>
+    <string name="cd_detflix_logo">Logotipo oficial de DETFLIX</string>
+    <string name="cd_back">Volver</string>
+    <string name="cd_notifications">Notificaciones</string>
+    <string name="cd_play">Reproducir</string>
+    <string name="cd_pause">Pausar</string>
+    <string name="cd_fullscreen">Pantalla completa</string>
+    <string name="membership_required_title">Membresía vencida o inactiva</string>
+    <string name="membership_required_body">Activa un código mensual de 30 días entregado por el administrador de DETFLIX para disfrutar de todo el catálogo.</string>
+</resources>

@@ -1,0 +1,168 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Cuenta de cliente DETFLIX",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "isSuspended": { "type": "boolean" },
+        "maxProfiles": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "isSuspended", "createdAt"]
+    },
+    "Membership": {
+      "title": "Membership",
+      "description": "Membresía mensual de 30 días controlada exclusivamente desde el servidor",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "EXPIRED", "SUSPENDED", "NONE"] },
+        "activatedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "lastCodeUsed": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "status", "updatedAt"]
+    },
+    "AccessCode": {
+      "title": "AccessCode",
+      "description": "Código mensual único de un solo uso generado por DETFLIX ADMIN",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "used", "expired", "cancelled"] },
+        "durationDays": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "activatedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "usedByUserId": { "type": "string" },
+        "createdByAdmin": { "type": "string" }
+      },
+      "required": ["code", "status", "durationDays", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Registro de pago confirmado administrativamente",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "confirmedByAdmin": { "type": "string" }
+      },
+      "required": ["email", "amount", "method", "status", "createdAt"]
+    },
+    "Content": {
+      "title": "Content",
+      "description": "Película, serie o documental autorizado",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["MOVIE", "SERIES", "DOCUMENTARY"] },
+        "posterUrl": { "type": "string" },
+        "streamUrl": { "type": "string" },
+        "categories": { "type": "string" },
+        "year": { "type": "integer" },
+        "ageRating": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "type", "streamUrl", "isAvailable", "updatedAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Categoría oficial de DETFLIX",
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string" },
+        "displayName": { "type": "string" }
+      },
+      "required": ["slug", "displayName"]
+    },
+    "WatchHistory": {
+      "title": "WatchHistory",
+      "description": "Progreso de reproducción por perfil",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "profileId": { "type": "string" },
+        "contentId": { "type": "string" },
+        "positionMs": { "type": "integer" },
+        "durationMs": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "profileId", "contentId", "positionMs", "updatedAt"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "Elemento guardado en Mi Lista",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "profileId": { "type": "string" },
+        "contentId": { "type": "string" },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "profileId", "contentId", "addedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Notificación de estreno o membresía",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "createdAt"]
+    },
+    "AdminLog": {
+      "title": "AdminLog",
+      "description": "Auditoría de operaciones administrativas",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "action", "createdAt"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Configuración global de la plataforma",
+      "type": "object",
+      "properties": {
+        "monthlyPrice": { "type": "number" },
+        "durationDays": { "type": "integer" },
+        "syncHours": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["monthlyPrice", "durationDays", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "Perfil privado de usuario" },
+    "/memberships/{userId}": { "schema": "Membership", "description": "Estado de membresía (solo lectura cliente, escritura servidor)" },
+    "/access_codes/{codeId}": { "schema": "AccessCode", "description": "Códigos mensuales de un solo uso" },
+    "/payments/{paymentId}": { "schema": "Payment", "description": "Pagos registrados" },
+    "/content/{contentId}": { "schema": "Content", "description": "Catálogo autorizado" },
+    "/categories/{categoryId}": { "schema": "Category", "description": "Las 12 categorías" },
+    "/watch_history/{historyId}": { "schema": "WatchHistory", "description": "Historial por perfil" },
+    "/favorites/{favoriteId}": { "schema": "Favorite", "description": "Favoritos por perfil" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "Notificaciones" },
+    "/admin_logs/{logId}": { "schema": "AdminLog", "description": "Bitácora administrativa" },
+    "/app_settings/{settingId}": { "schema": "AppSettings", "description": "Parámetros globales" }
+  }
+}
