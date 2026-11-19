@@ -36,14 +36,21 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           base64 -d debug.keystore.base64 > debug.keystore
 
-      - name: Compilar APK Debug de DETFLIX
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Compilar APKs (DETFLIX APP y DETFLIX ADMIN)
+        run: gradle :app:assembleDebug :admin-app:assembleDebug --no-daemon
 
-      - name: Subir APK descargable
+      - name: Subir DETFLIX APP (APK Clientes)
         uses: actions/upload-artifact@v4
         with:
           name: DETFLIX-APP-APK
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Subir DETFLIX ADMIN (APK Control)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DETFLIX-ADMIN-APK
+          path: admin-app/build/outputs/apk/debug/admin-app-debug.apk
           if-no-files-found: error
 
   package_admin_web:

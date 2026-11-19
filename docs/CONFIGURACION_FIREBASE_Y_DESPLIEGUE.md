@@ -3,8 +3,9 @@
 Este proyecto contiene **dos plataformas independientes** diseñadas para trabajar conectadas al mismo proyecto Firebase:
 
 1. **DETFLIX APP** (`/app/`): Aplicación Android de streaming para clientes (Kotlin + Jetpack Compose + Room + Media3 ExoPlayer + Retrofit + WorkManager). **No contiene ningún panel administrativo.**
-2. **DETFLIX ADMIN WEB** (`/admin-web/`): Panel administrativo web independiente para el propietario (HTML/CSS/JS moderno + Firebase Web SDK v10 + Hosting).
-3. **BACKEND FIREBASE** (`/firebase-backend/`): Esquema (`firebase-blueprint.json`), reglas de seguridad zero-trust (`firestore.rules`) y Cloud Functions (`functions/index.js`).
+2. **DETFLIX ADMIN APK** (`/admin-app/`): Aplicación Android independiente para el administrador (generador de códigos `DFX`, clientes, pagos, renovaciones, catálogo y exportación `catalog.json`).
+3. **DETFLIX ADMIN WEB** (`/admin-web/`): Panel administrativo web independiente para el propietario (HTML/CSS/JS moderno + Firebase Web SDK v10 + Hosting).
+4. **BACKEND FIREBASE** (`/firebase-backend/`): Esquema (`firebase-blueprint.json`), reglas de seguridad zero-trust (`firestore.rules`) y Cloud Functions (`functions/index.js`).
 
 ---
 
@@ -56,14 +57,12 @@ Tu panel administrativo quedará publicado en una URL privada propia, por ejempl
 
 ---
 
-## 5. Compilar el APK de DETFLIX APP (Android)
+## 5. Compilar los 2 APKs (DETFLIX APP y DETFLIX ADMIN APK)
 
-Desde la raíz del proyecto:
+Desde la raíz del proyecto (o automáticamente en GitHub Actions `DETFLIX Build APK & Admin Web`):
 
 ```bash
-gradle :app:assembleDebug
-# APK generado en: app/build/outputs/apk/debug/app-debug.apk
-
-# Para versión Release firmada:
-gradle :app:assembleRelease
+gradle :app:assembleDebug :admin-app:assembleDebug
+# APK Clientes: app/build/outputs/apk/debug/app-debug.apk (artefacto DETFLIX-APP-APK)
+# APK Admin:    admin-app/build/outputs/apk/debug/admin-app-debug.apk (artefacto DETFLIX-ADMIN-APK)
 ```

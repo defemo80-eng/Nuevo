@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "DETFLIX"
 
 include(":app")
+include(":admin-app")

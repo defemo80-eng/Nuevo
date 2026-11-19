@@ -22,15 +22,12 @@
         Modo Local activo (sin Firebase configurado). Copia <code>firebase-config.example.js</code> a <code>firebase-config.js</code> para sincronización en la nube.
       </div>
       <form id="adminLoginForm">
-        <label for="adminEmail">Correo del Propietario / Administrador</label>
-        <input id="adminEmail" type="email" required placeholder="admin@detflix.com" />
+        <label for="adminEmail">Correo (solo si usas Firebase)</label>
+        <input id="adminEmail" type="email" placeholder="Opcional en modo local" />
         <label for="adminPassword">Contraseña Administrativa</label>
-        <input id="adminPassword" type="password" required placeholder="••••••••" />
-        <button type="submit" class="btn btn-primary" style="width:100%;">Iniciar Sesión Segura</button>
+        <input id="adminPassword" type="password" required placeholder="Ingresa la contraseña" />
+        <button type="submit" class="btn btn-primary" style="width:100%;">Entrar a DETFLIX ADMIN</button>
       </form>
-      <button id="quickLocalBtn" type="button" class="btn btn-secondary" style="width:100%;margin-top:10px;">
-        Entrar Directo (Modo Local)
-      </button>
       <p id="authError" style="color:#ff5c66;font-size:13px;margin-top:12px;"></p>
     </div>
   </section>

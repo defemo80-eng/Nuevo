@@ -148,6 +148,10 @@ adminLoginForm.addEventListener("submit", async (e) => {
   const password = document.getElementById("adminPassword").value;
 
   if (firebaseCtx) {
+    if (!email.includes("@")) {
+      authError.textContent = "Ingresa el correo de administrador Firebase.";
+      return;
+    }
     try {
       const cred = await firebaseCtx.authMod.signInWithEmailAndPassword(firebaseCtx.auth, email, password);
       const token = await cred.user.getIdTokenResult(true);
@@ -165,11 +169,11 @@ adminLoginForm.addEventListener("submit", async (e) => {
       authError.textContent = `Error de autenticación Firebase: ${err.message}`;
     }
   } else {
-    if (!email.includes("@") || password.length < 4) {
-      authError.textContent = "Ingresa un correo y contraseña válidos.";
+    if (password.trim() !== "2013") {
+      authError.textContent = "Contraseña administrativa incorrecta.";
       return;
     }
-    document.getElementById("connectionStatus").textContent = `Modo Local (${email}) — Códigos compatibles con DETFLIX APP`;
+    document.getElementById("connectionStatus").textContent = "Modo Local — Códigos compatibles con DETFLIX APP";
     enterConsole();
   }
 });
