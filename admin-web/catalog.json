@@ -1,0 +1,31 @@
+{
+  "updatedAt": "2026-11-19T00:00:00Z",
+  "contents": [
+    {
+      "id": "blender_sintel",
+      "title": "Sintel",
+      "description": "Producción abierta de Blender Foundation. Una joven guerrera busca a su pequeño dragón Scales.",
+      "posterUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Sintel_poster.jpg/640px-Sintel_poster.jpg",
+      "backdropUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Sintel-dragon-1920x1080.jpg/1280px-Sintel-dragon-1920x1080.jpg",
+      "streamUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+      "type": "MOVIE",
+      "categories": "Acción, Aventura, Animación",
+      "year": 2010,
+      "featured": true,
+      "available": true
+    },
+    {
+      "id": "novela_corazon_paris",
+      "title": "Corazón en París",
+      "description": "Novela de amor, intriga y secretos familiares entre París y Madrid.",
+      "posterUrl": "https://archive.org/services/img/Charade_1963",
+      "backdropUrl": "https://archive.org/services/img/Charade_1963",
+      "streamUrl": "https://archive.org/download/Charade_1963/Charade_512kb.mp4",
+      "type": "NOVELA",
+      "categories": "Novelas, Romance, Drama",
+      "year": 2025,
+      "featured": true,
+      "available": true
+    }
+  ]
+}

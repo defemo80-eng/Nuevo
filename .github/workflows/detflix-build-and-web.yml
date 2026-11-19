@@ -1,4 +1,4 @@
-name: DETFLIX Build APK & Deploy Admin Web
+name: DETFLIX Build APK & Admin Web
 
 on:
   push:
@@ -7,12 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "detflix-ci"
-  cancel-in-progress: false
 
 jobs:
   build_apk:
@@ -31,13 +25,16 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Configurar Gradle 9.3.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.3.1'
+      - name: Instalar Gradle 9.3.1
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-9.3.1/bin" >> "$GITHUB_PATH"
 
-      - name: Preparar debug.keystore
-        run: base64 -d debug.keystore.base64 > debug.keystore
+      - name: Preparar licencias y debug.keystore
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          base64 -d debug.keystore.base64 > debug.keystore
 
       - name: Compilar APK Debug de DETFLIX
         run: gradle :app:assembleDebug --no-daemon
@@ -49,25 +46,24 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-  deploy_admin_web:
-    name: Publicar DETFLIX ADMIN WEB (GitHub Pages)
+  package_admin_web:
+    name: Validar y Empaquetar DETFLIX ADMIN WEB
     runs-on: ubuntu-latest
-    continue-on-error: true
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Descargar código
         uses: actions/checkout@v4
 
-      - name: Configurar GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Empaquetar carpeta admin-web
-        uses: actions/upload-pages-artifact@v3
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
-          path: admin-web
+          node-version: '20'
 
-      - name: Publicar web administrativa
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Validar sintaxis de DETFLIX ADMIN WEB
+        run: node --check admin-web/app.js
+
+      - name: Subir paquete Web Administrativo
+        uses: actions/upload-artifact@v4
+        with:
+          name: DETFLIX-ADMIN-WEB
+          path: admin-web/
+          if-no-files-found: error

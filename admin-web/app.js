@@ -124,7 +124,22 @@ const adminLoginForm = document.getElementById("adminLoginForm");
 const authError = document.getElementById("authError");
 const sidebar = document.getElementById("sidebar");
 
-initFirebaseIfConfigured().then((ctx) => { firebaseCtx = ctx; });
+const quickLocalBtn = document.getElementById("quickLocalBtn");
+
+initFirebaseIfConfigured().then((ctx) => {
+  firebaseCtx = ctx;
+  if (ctx && quickLocalBtn) {
+    quickLocalBtn.classList.add("hidden");
+  }
+});
+
+if (quickLocalBtn) {
+  quickLocalBtn.addEventListener("click", () => {
+    if (firebaseCtx) return;
+    document.getElementById("connectionStatus").textContent = "Modo Local (Acceso Directo) — Códigos compatibles con DETFLIX APP";
+    enterConsole();
+  });
+}
 
 adminLoginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
