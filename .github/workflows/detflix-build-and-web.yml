@@ -1,0 +1,73 @@
+name: DETFLIX Build APK & Deploy Admin Web
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "detflix-ci"
+  cancel-in-progress: false
+
+jobs:
+  build_apk:
+    name: Compilar DETFLIX APP (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configurar Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Preparar debug.keystore
+        run: base64 -d debug.keystore.base64 > debug.keystore
+
+      - name: Compilar APK Debug de DETFLIX
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Subir APK descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: DETFLIX-APP-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  deploy_admin_web:
+    name: Publicar DETFLIX ADMIN WEB (GitHub Pages)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Empaquetar carpeta admin-web
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: admin-web
+
+      - name: Publicar web administrativa
+        id: deployment
+        uses: actions/deploy-pages@v4

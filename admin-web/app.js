@@ -124,7 +124,7 @@ const adminLoginForm = document.getElementById("adminLoginForm");
 const authError = document.getElementById("authError");
 const sidebar = document.getElementById("sidebar");
 
-firebaseCtx = await initFirebaseIfConfigured();
+initFirebaseIfConfigured().then((ctx) => { firebaseCtx = ctx; });
 
 adminLoginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
