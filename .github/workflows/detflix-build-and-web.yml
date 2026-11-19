@@ -27,14 +27,20 @@ jobs:
 
       - name: Instalar Gradle 9.3.1
         run: |
-          curl -fsSL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /opt
-          echo "/opt/gradle-9.3.1/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/gradle"
+          curl -fsSL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP/gradle"
+          echo "$RUNNER_TEMP/gradle/gradle-9.3.1/bin" >> "$GITHUB_PATH"
 
-      - name: Preparar licencias y debug.keystore
+      - name: Preparar Android SDK 36.1 y debug.keystore
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          base64 -d debug.keystore.base64 > debug.keystore
+          yes | sdkmanager "platform-tools" "platforms;android-36.1" "build-tools;36.0.0" >/dev/null
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Compilar APKs (DETFLIX APP y DETFLIX ADMIN)
         run: gradle :app:assembleDebug :admin-app:assembleDebug --no-daemon
