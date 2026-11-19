@@ -84,11 +84,12 @@ import com.example.ui.theme.DetflixTextSecondary
 import com.example.ui.theme.DetflixWhite
 import com.example.ui.viewmodel.HomeFeedState
 
-private enum class HomeQuickFilter(val label: String, val type: ContentType?) {
-    ALL("Todo", null),
-    SERIES("Series", ContentType.SERIES),
-    MOVIES("Películas", ContentType.MOVIE),
-    NOVELAS("Novelas", ContentType.NOVELA)
+private enum class HomeQuickFilter(val label: String) {
+    ALL("Todo"),
+    SERIES("Series"),
+    MOVIES("Películas"),
+    DRAMAS("Dramas"),
+    NOVELAS("Novelas")
 }
 
 @Composable
@@ -113,10 +114,23 @@ fun HomeScreen(
     var selectedQuickFilter by remember { mutableStateOf(HomeQuickFilter.ALL) }
     var showCategoriesModal by remember { mutableStateOf(false) }
 
-    val activeType = selectedQuickFilter.type
-    val heroCandidates = remember(feed, activeType) {
-        if (activeType == null) feed.featured
-        else feed.allItems.filter { it.type == activeType }.sortedByDescending { it.popularityScore }.take(5)
+    val filteredCatalog = remember(feed.allItems, selectedQuickFilter) {
+        when (selectedQuickFilter) {
+            HomeQuickFilter.ALL -> feed.allItems
+            HomeQuickFilter.SERIES -> feed.allItems.filter { it.type == ContentType.SERIES }
+            HomeQuickFilter.MOVIES -> feed.allItems.filter { it.type == ContentType.MOVIE }
+            HomeQuickFilter.DRAMAS -> feed.allItems.filter {
+                it.categories.any { c -> c.equals("Drama", ignoreCase = true) }
+            }
+            HomeQuickFilter.NOVELAS -> feed.allItems.filter {
+                it.type == ContentType.NOVELA || it.categories.any { c -> c.equals("Novelas", ignoreCase = true) }
+            }
+        }
+    }
+
+    val heroCandidates = remember(feed.featured, filteredCatalog, selectedQuickFilter) {
+        if (selectedQuickFilter == HomeQuickFilter.ALL) feed.featured
+        else filteredCatalog.sortedByDescending { it.popularityScore }.take(5)
     }
     var heroIndex by remember(heroCandidates) { mutableIntStateOf(0) }
     val heroItem = heroCandidates.getOrNull(heroIndex % heroCandidates.size.coerceAtLeast(1))
@@ -214,7 +228,7 @@ fun HomeScreen(
             }
         }
 
-        // Netflix-style Quick Type Bar (Todo / Series / Películas / Novelas / Categorías ▾)
+        // Netflix-style Quick Filter Bar (Todo / Series / Películas / Dramas / Novelas / Categorías ▾)
         item {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -316,28 +330,26 @@ fun HomeScreen(
             }
         }
 
-        // If user filtered by Series / Películas / Novelas
-        if (activeType != null) {
-            val filteredItems = feed.allItems.filter { it.type == activeType }.sortedByDescending { it.popularityScore }
+        if (selectedQuickFilter != HomeQuickFilter.ALL) {
+            val popularSubset = filteredCatalog.sortedByDescending { it.popularityScore }
+            val recentSubset = filteredCatalog.sortedByDescending { it.year }
             item {
                 CatalogRail(
-                    title = "${selectedQuickFilter.label.uppercase()} DESTACADAS",
-                    items = filteredItems,
+                    title = "${selectedQuickFilter.label.uppercase()} MÁS POPULARES (${popularSubset.size})",
+                    items = popularSubset,
                     onItemClick = onContentClick
                 )
             }
-            val recentFiltered = filteredItems.sortedByDescending { it.year }
-            if (recentFiltered.isNotEmpty()) {
+            if (recentSubset.isNotEmpty()) {
                 item {
                     CatalogRail(
-                        title = "AGREGADOS RECIENTEMENTE",
-                        items = recentFiltered,
+                        title = "ESTRENOS EN ${selectedQuickFilter.label.uppercase()}",
+                        items = recentSubset,
                         onItemClick = onContentClick
                     )
                 }
             }
         } else {
-            // 1. Continuar viendo
             if (feed.continueWatching.isNotEmpty()) {
                 item {
                     ContinueWatchingRail(
@@ -347,7 +359,6 @@ fun HomeScreen(
                 }
             }
 
-            // 2. Top 10 en DETFLIX Hoy (Netflix style)
             if (feed.topTen.isNotEmpty()) {
                 item {
                     TopTenRail(
@@ -358,7 +369,6 @@ fun HomeScreen(
                 }
             }
 
-            // 3. Mi lista
             if (feed.myList.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -369,7 +379,6 @@ fun HomeScreen(
                 }
             }
 
-            // 4. Últimos estrenos
             if (feed.latestReleases.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -380,7 +389,6 @@ fun HomeScreen(
                 }
             }
 
-            // 5. Series populares
             if (feed.popularSeries.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -391,18 +399,26 @@ fun HomeScreen(
                 }
             }
 
-            // 6. Novelas y dramas
+            if (feed.dramas.isNotEmpty()) {
+                item {
+                    CatalogRail(
+                        title = "DRAMAS INTENSOS",
+                        items = feed.dramas,
+                        onItemClick = onContentClick
+                    )
+                }
+            }
+
             if (feed.novelas.isNotEmpty()) {
                 item {
                     CatalogRail(
-                        title = "NOVELAS Y DRAMAS",
+                        title = "NOVELAS Y ROMANCE",
                         items = feed.novelas,
                         onItemClick = onContentClick
                     )
                 }
             }
 
-            // 7. Acción y Ciencia Ficción
             if (feed.actionSciFi.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -413,7 +429,6 @@ fun HomeScreen(
                 }
             }
 
-            // 8. Terror y Suspenso
             if (feed.horrorSuspense.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -424,7 +439,6 @@ fun HomeScreen(
                 }
             }
 
-            // 9. Comedia, Romance e Infantil
             if (feed.comedyFamily.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -435,7 +449,6 @@ fun HomeScreen(
                 }
             }
 
-            // 10. Documentales y Deportes
             if (feed.docsAndSports.isNotEmpty()) {
                 item {
                     CatalogRail(
@@ -446,12 +459,21 @@ fun HomeScreen(
                 }
             }
 
-            // 11. Recomendadas y Tendencias
             if (feed.recommended.isNotEmpty()) {
                 item {
                     CatalogRail(
                         title = "RECOMENDADAS PARA TI",
                         items = feed.recommended,
+                        onItemClick = onContentClick
+                    )
+                }
+            }
+
+            if (feed.allItems.isNotEmpty()) {
+                item {
+                    CatalogRail(
+                        title = "CATÁLOGO COMPLETO (${feed.allItems.size} TÍTULOS)",
+                        items = feed.allItems,
                         onItemClick = onContentClick
                     )
                 }

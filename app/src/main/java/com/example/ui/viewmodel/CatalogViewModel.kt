@@ -11,13 +11,17 @@ import com.example.data.model.ContentType
 import com.example.data.model.ContinueWatchingEntry
 import com.example.data.repository.DetflixRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -44,6 +48,7 @@ data class HomeFeedState(
     val topTen: List<CatalogItem> = emptyList(),
     val latestReleases: List<CatalogItem> = emptyList(),
     val popularSeries: List<CatalogItem> = emptyList(),
+    val dramas: List<CatalogItem> = emptyList(),
     val novelas: List<CatalogItem> = emptyList(),
     val actionSciFi: List<CatalogItem> = emptyList(),
     val horrorSuspense: List<CatalogItem> = emptyList(),
@@ -57,7 +62,7 @@ data class HomeFeedState(
     val allItems: List<CatalogItem> = emptyList()
 )
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() {
 
     private val currentUserId: StateFlow<String?> = repository.observeCurrentUserId()
@@ -114,13 +119,16 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
                 }
                 item.popularityScore + genreBoost
             }
-            .take(12)
+            .take(15)
 
         HomeFeedState(
             featured = catalog.filter { it.isFeatured }.ifEmpty { catalog.take(5) },
             topTen = catalog.sortedByDescending { it.popularityScore }.take(10),
             latestReleases = catalog.filter { it.isNewRelease }.sortedByDescending { it.year },
             popularSeries = catalog.filter { it.type == ContentType.SERIES }.sortedByDescending { it.popularityScore },
+            dramas = catalog.filter { item ->
+                item.categories.any { it.equals("Drama", ignoreCase = true) }
+            }.sortedByDescending { it.popularityScore },
             novelas = catalog.filter {
                 it.type == ContentType.NOVELA || it.categories.any { c -> c.equals("Novelas", ignoreCase = true) }
             }.sortedByDescending { it.popularityScore },
@@ -155,6 +163,9 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
 
     private val _searchFilters = MutableStateFlow(SearchFilterState())
     val searchFilters: StateFlow<SearchFilterState> = _searchFilters.asStateFlow()
+
+    private val _isSearchingOnline = MutableStateFlow(false)
+    val isSearchingOnline: StateFlow<Boolean> = _isSearchingOnline.asStateFlow()
 
     val searchResults: StateFlow<List<CatalogItem>> = combine(
         homeFeed,
@@ -214,6 +225,21 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
             if (res.isSuccess && res.getOrDefault(0) > 0) {
                 _syncMessage.value = "Catálogo actualizado automáticamente (${res.getOrDefault(0)} novedades y mejoras)."
             }
+        }
+        viewModelScope.launch {
+            _searchFilters
+                .map { it.query.trim() }
+                .distinctUntilChanged()
+                .debounce(450L)
+                .collect { q ->
+                    if (q.length >= 2) {
+                        _isSearchingOnline.value = true
+                        runCatching { repository.searchCatalogOnline(q) }
+                        _isSearchingOnline.value = false
+                    } else {
+                        _isSearchingOnline.value = false
+                    }
+                }
         }
     }
 

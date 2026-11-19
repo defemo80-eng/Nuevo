@@ -18,6 +18,7 @@ class AdminRepository(
     val clientsFlow: Flow<List<AdminClientEntity>> = dao.observeClients()
     val paymentsFlow: Flow<List<AdminPaymentEntity>> = dao.observePayments()
     val contentsFlow: Flow<List<AdminContentEntity>> = dao.observeContents()
+    val episodesFlow: Flow<List<AdminEpisodeEntity>> = dao.observeEpisodes()
     val logsFlow: Flow<List<AdminLogEntity>> = dao.observeLogs()
     val settingsFlow: Flow<AdminSettings> = prefs.settingsFlow
 
@@ -32,7 +33,7 @@ class AdminRepository(
                         type = "MOVIE",
                         categories = "Acción, Aventura, Animación",
                         year = 2010,
-                        posterUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Sintel_poster.jpg/640px-Sintel_poster.jpg",
+                        posterUrl = "",
                         streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
                         description = "Producción abierta de Blender Foundation. Una joven guerrera busca a su pequeño dragón Scales.",
                         featured = true,
@@ -45,7 +46,7 @@ class AdminRepository(
                         type = "SERIES",
                         categories = "Ciencia ficción, Aventura",
                         year = 1936,
-                        posterUrl = "https://archive.org/services/img/flash_gordon_space_soldiers",
+                        posterUrl = "",
                         streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
                         description = "Serie clásica de ciencia ficción y aventura espacial.",
                         featured = true,
@@ -58,8 +59,8 @@ class AdminRepository(
                         type = "NOVELA",
                         categories = "Novelas, Romance, Drama",
                         year = 2025,
-                        posterUrl = "https://archive.org/services/img/Charade_1963",
-                        streamUrl = "https://archive.org/download/Charade_1963/Charade_512kb.mp4",
+                        posterUrl = "",
+                        streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
                         description = "Novela de amor, intriga y secretos familiares entre París y Madrid.",
                         featured = true,
                         available = true,
@@ -302,8 +303,48 @@ class AdminRepository(
     }
 
     suspend fun deleteContent(content: AdminContentEntity) {
+        dao.deleteEpisodesForSeries(content.id)
         dao.deleteContent(content)
         dao.insertLog(AdminLogEntity(message = "Contenido eliminado: ${content.title}.", createdAtMillis = System.currentTimeMillis()))
+    }
+
+    suspend fun saveEpisode(
+        id: String?,
+        seriesId: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        title: String,
+        description: String,
+        thumbnailUrl: String,
+        streamUrl: String,
+        durationMinutes: Int
+    ) {
+        val now = System.currentTimeMillis()
+        val epId = id?.takeIf { it.isNotBlank() } ?: "ep_${UUID.randomUUID().toString().take(8)}"
+        dao.upsertEpisode(
+            AdminEpisodeEntity(
+                id = epId,
+                seriesId = seriesId,
+                seasonNumber = seasonNumber.coerceAtLeast(1),
+                episodeNumber = episodeNumber.coerceAtLeast(1),
+                title = title.trim(),
+                description = description.trim(),
+                thumbnailUrl = thumbnailUrl.trim(),
+                streamUrl = streamUrl.trim(),
+                durationMinutes = durationMinutes.coerceAtLeast(1)
+            )
+        )
+        dao.insertLog(
+            AdminLogEntity(
+                message = "Episodio T${seasonNumber.coerceAtLeast(1)}E${episodeNumber.coerceAtLeast(1)} guardado: ${title.trim()}.",
+                createdAtMillis = now
+            )
+        )
+    }
+
+    suspend fun deleteEpisode(episode: AdminEpisodeEntity) {
+        dao.deleteEpisode(episode)
+        dao.insertLog(AdminLogEntity(message = "Episodio eliminado: ${episode.title}.", createdAtMillis = System.currentTimeMillis()))
     }
 
     suspend fun saveSettings(settings: AdminSettings) {
@@ -313,11 +354,29 @@ class AdminRepository(
 
     suspend fun buildCatalogJson(): String {
         val contents = dao.observeContents().first()
+        val episodesBySeries = dao.observeEpisodes().first().groupBy { it.seriesId }
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
         val array = JSONArray()
         contents.filter { it.available }.forEach { item ->
+            val eps = episodesBySeries[item.id].orEmpty()
+            val maxSeason = eps.maxOfOrNull { it.seasonNumber } ?: 1
+            val epsArray = JSONArray()
+            eps.forEach { ep ->
+                epsArray.put(
+                    JSONObject().apply {
+                        put("id", ep.id)
+                        put("seasonNumber", ep.seasonNumber)
+                        put("episodeNumber", ep.episodeNumber)
+                        put("title", ep.title)
+                        put("description", ep.description)
+                        put("thumbnailUrl", ep.thumbnailUrl)
+                        put("streamUrl", ep.streamUrl)
+                        put("durationMinutes", ep.durationMinutes)
+                    }
+                )
+            }
             array.put(
                 JSONObject().apply {
                     put("id", item.id)
@@ -329,8 +388,12 @@ class AdminRepository(
                     put("type", item.type)
                     put("categories", item.categories)
                     put("year", item.year)
+                    put("seasonsCount", maxSeason)
                     put("featured", item.featured)
                     put("available", item.available)
+                    if (eps.isNotEmpty()) {
+                        put("episodes", epsArray)
+                    }
                 }
             )
         }

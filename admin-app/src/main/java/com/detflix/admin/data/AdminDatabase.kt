@@ -11,9 +11,10 @@ import androidx.room.RoomDatabase
         AdminClientEntity::class,
         AdminPaymentEntity::class,
         AdminContentEntity::class,
+        AdminEpisodeEntity::class,
         AdminLogEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AdminDatabase : RoomDatabase() {

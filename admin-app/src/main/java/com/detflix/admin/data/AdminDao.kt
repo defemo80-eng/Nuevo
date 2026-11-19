@@ -48,6 +48,18 @@ interface AdminDao {
     @Delete
     suspend fun deleteContent(content: AdminContentEntity)
 
+    @Query("SELECT * FROM admin_episodes ORDER BY seriesId, seasonNumber ASC, episodeNumber ASC")
+    fun observeEpisodes(): Flow<List<AdminEpisodeEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertEpisode(episode: AdminEpisodeEntity)
+
+    @Delete
+    suspend fun deleteEpisode(episode: AdminEpisodeEntity)
+
+    @Query("DELETE FROM admin_episodes WHERE seriesId = :seriesId")
+    suspend fun deleteEpisodesForSeries(seriesId: String)
+
     @Query("SELECT * FROM admin_logs ORDER BY createdAtMillis DESC LIMIT 40")
     fun observeLogs(): Flow<List<AdminLogEntity>>
 

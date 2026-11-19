@@ -144,6 +144,7 @@ fun DetflixRootApp() {
     val favoriteIds by catalogVm.favoriteIds.collectAsStateWithLifecycle()
     val searchFilters by catalogVm.searchFilters.collectAsStateWithLifecycle()
     val searchResults by catalogVm.searchResults.collectAsStateWithLifecycle()
+    val isSearchingOnline by catalogVm.isSearchingOnline.collectAsStateWithLifecycle()
     val notifications by catalogVm.notifications.collectAsStateWithLifecycle()
     val unreadNotifications by catalogVm.unreadNotificationsCount.collectAsStateWithLifecycle()
     val syncLogs by catalogVm.syncLogs.collectAsStateWithLifecycle()
@@ -306,6 +307,7 @@ fun DetflixRootApp() {
                             filters = searchFilters,
                             results = searchResults,
                             recommendedFallback = homeFeed.recommended,
+                            isSearchingOnline = isSearchingOnline,
                             onQueryChange = catalogVm::updateSearchQuery,
                             onToggleType = catalogVm::updateTypeFilter,
                             onToggleCategory = catalogVm::updateCategoryFilter,

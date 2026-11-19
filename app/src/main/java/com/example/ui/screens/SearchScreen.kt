@@ -29,11 +29,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -46,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.CatalogItem
@@ -67,6 +72,7 @@ fun SearchScreen(
     filters: SearchFilterState,
     results: List<CatalogItem>,
     recommendedFallback: List<CatalogItem>,
+    isSearchingOnline: Boolean = false,
     onQueryChange: (String) -> Unit,
     onToggleType: (ContentType?) -> Unit,
     onToggleCategory: (String?) -> Unit,
@@ -130,7 +136,7 @@ fun SearchScreen(
                 onValueChange = onQueryChange,
                 placeholder = {
                     Text(
-                        text = "Buscar películas, series, novelas...",
+                        text = "Buscar películas, series, dramas, novelas...",
                         color = DetflixTextSecondary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -158,6 +164,14 @@ fun SearchScreen(
                     .fillMaxWidth()
                     .testTag("search_input")
             )
+            if (isSearchingOnline) {
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    color = DetflixRed,
+                    trackColor = DetflixSurfaceElevated,
+                    modifier = Modifier.fillMaxWidth().height(2.dp)
+                )
+            }
         }
 
         // Type & Year & Language Filter Row
@@ -232,7 +246,7 @@ fun SearchScreen(
         if (!filters.hasActiveQueryOrFilters) {
             // Netflix "Búsquedas principales" horizontal landscape list with Play buttons
             Text(
-                text = "Búsquedas principales",
+                text = "Búsquedas principales (${results.size} títulos)",
                 style = MaterialTheme.typography.headlineMedium,
                 color = DetflixWhite,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -259,41 +273,73 @@ fun SearchScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (results.isEmpty()) "Sin coincidencias exactas"
-                    else "Resultados (${results.size})",
+                    text = when {
+                        isSearchingOnline -> "Buscando en catálogo y en línea..."
+                        results.isEmpty() -> "Sin coincidencias para «${filters.query.trim()}»"
+                        else -> "Resultados encontrados (${results.size})"
+                    },
                     style = MaterialTheme.typography.labelLarge,
-                    color = DetflixTextSecondary
+                    color = DetflixTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = onClearFilters) {
-                    Text("Limpiar filtros", color = DetflixRed)
+                    Text("Limpiar", color = DetflixRed)
                 }
             }
 
-            val displayItems = if (results.isNotEmpty()) results else recommendedFallback
-            if (results.isEmpty()) {
-                Text(
-                    text = "También podría interesarte",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = DetflixWhite,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
-
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val gridColumns = if (maxWidth < 600.dp) GridCells.Fixed(3) else GridCells.Adaptive(minSize = 132.dp)
-                LazyVerticalGrid(
-                    columns = gridColumns,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
+            if (results.isEmpty() && !isSearchingOnline) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(displayItems, key = { "grid_${it.id}" }) { item ->
-                        PosterCard(
-                            item = item,
-                            onClick = { onItemClick(item) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    Icon(
+                        imageVector = Icons.Filled.SearchOff,
+                        contentDescription = null,
+                        tint = DetflixRed,
+                        modifier = Modifier.size(46.dp)
+                    )
+                    Text(
+                        text = "No se encontró «${filters.query.ifBlank { filters.selectedCategory ?: "este filtro" }}»",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DetflixWhite,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "DETFLIX reproduce títulos libres autorizados y los títulos propios que el administrador agregue desde DETFLIX Admin. Por derechos de autor, no incluye el catálogo privado de plataformas externas como Netflix.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = DetflixTextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = onClearFilters,
+                        colors = ButtonDefaults.buttonColors(containerColor = DetflixRed),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Ver todo el catálogo (${recommendedFallback.size}+)", color = DetflixWhite)
+                    }
+                }
+            } else {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val gridColumns = if (maxWidth < 600.dp) GridCells.Fixed(3) else GridCells.Adaptive(minSize = 132.dp)
+                    LazyVerticalGrid(
+                        columns = gridColumns,
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(results, key = { "grid_${it.id}" }) { item ->
+                            PosterCard(
+                                item = item,
+                                onClick = { onItemClick(item) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }

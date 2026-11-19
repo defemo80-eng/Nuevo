@@ -7,6 +7,7 @@ import com.detflix.admin.data.AdminClientEntity
 import com.detflix.admin.data.AdminCodeEntity
 import com.detflix.admin.data.AdminContentEntity
 import com.detflix.admin.data.AdminDatabase
+import com.detflix.admin.data.AdminEpisodeEntity
 import com.detflix.admin.data.AdminLogEntity
 import com.detflix.admin.data.AdminPaymentEntity
 import com.detflix.admin.data.AdminPreferences
@@ -41,6 +42,7 @@ data class AdminUiState(
     val clients: List<AdminClientEntity> = emptyList(),
     val payments: List<AdminPaymentEntity> = emptyList(),
     val contents: List<AdminContentEntity> = emptyList(),
+    val episodes: List<AdminEpisodeEntity> = emptyList(),
     val logs: List<AdminLogEntity> = emptyList(),
     val settings: AdminSettings = AdminSettings(),
     val metrics: AdminDashboardMetrics = AdminDashboardMetrics(),
@@ -72,11 +74,12 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     val uiState: StateFlow<AdminUiState> = combine(
         baseDataFlow,
+        repository.episodesFlow,
         repository.settingsFlow,
         latestCode,
-        snackbar,
-        combine(pinUnlocked, pinError) { u, e -> u to e }
-    ) { bundle, settings, latest, toastMsg, (unlocked, pError) ->
+        combine(snackbar, pinUnlocked, pinError) { msg, unlocked, pError -> Triple(msg, unlocked, pError) }
+    ) { bundle, episodes, settings, latest, uiFlags ->
+        val (toastMsg, unlocked, pError) = uiFlags
         val now = System.currentTimeMillis()
         val fiveDaysMs = 5 * 86_400_000L
         val activeClients = bundle.clients.count { it.status == "ACTIVE" && it.expiresAtMillis > now }
@@ -96,6 +99,7 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             clients = bundle.clients,
             payments = bundle.payments,
             contents = bundle.contents,
+            episodes = episodes,
             logs = bundle.logs,
             settings = settings,
             metrics = metrics,
@@ -230,6 +234,43 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteContent(content)
             snackbar.value = "Contenido eliminado"
+        }
+    }
+
+    fun saveEpisode(
+        seriesId: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        title: String,
+        description: String,
+        thumbnailUrl: String,
+        streamUrl: String,
+        durationMinutes: Int
+    ) {
+        if (title.isBlank() || streamUrl.isBlank()) {
+            snackbar.value = "Título y URL del episodio son obligatorios"
+            return
+        }
+        viewModelScope.launch {
+            repository.saveEpisode(
+                id = null,
+                seriesId = seriesId,
+                seasonNumber = seasonNumber,
+                episodeNumber = episodeNumber,
+                title = title,
+                description = description,
+                thumbnailUrl = thumbnailUrl,
+                streamUrl = streamUrl,
+                durationMinutes = durationMinutes
+            )
+            snackbar.value = "Episodio T${seasonNumber}E${episodeNumber} agregado"
+        }
+    }
+
+    fun deleteEpisode(episode: AdminEpisodeEntity) {
+        viewModelScope.launch {
+            repository.deleteEpisode(episode)
+            snackbar.value = "Episodio eliminado"
         }
     }
 

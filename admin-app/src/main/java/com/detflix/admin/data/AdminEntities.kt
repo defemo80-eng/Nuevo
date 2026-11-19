@@ -1,6 +1,7 @@
 package com.detflix.admin.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "admin_codes")
@@ -41,7 +42,7 @@ data class AdminPaymentEntity(
 data class AdminContentEntity(
     @PrimaryKey val id: String,
     val title: String,
-    val type: String, // MOVIE, SERIES, NOVELA
+    val type: String, // MOVIE, SERIES, NOVELA, DOCUMENTARY
     val categories: String,
     val year: Int,
     val posterUrl: String,
@@ -50,6 +51,22 @@ data class AdminContentEntity(
     val featured: Boolean = false,
     val available: Boolean = true,
     val updatedAtMillis: Long
+)
+
+@Entity(
+    tableName = "admin_episodes",
+    indices = [Index(value = ["seriesId"])]
+)
+data class AdminEpisodeEntity(
+    @PrimaryKey val id: String,
+    val seriesId: String,
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val title: String,
+    val description: String,
+    val thumbnailUrl: String,
+    val streamUrl: String,
+    val durationMinutes: Int
 )
 
 @Entity(tableName = "admin_logs")

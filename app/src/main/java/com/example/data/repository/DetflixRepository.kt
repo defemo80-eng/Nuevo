@@ -75,6 +75,8 @@ class DetflixRepository(private val context: Context) {
 
     suspend fun syncCatalogNow(): Result<Int> = syncEngine.syncFromAuthorizedSources(notifyUser = true)
 
+    suspend fun searchCatalogOnline(query: String): Int = syncEngine.searchLivePublicCatalog(query)
+
     fun observeCurrentUserId(): Flow<String?> = prefs.currentUserId
     fun observeCurrentProfileId(): Flow<String?> = prefs.currentProfileId
     fun observeLastSyncAt(): Flow<Long> = prefs.lastSyncAt

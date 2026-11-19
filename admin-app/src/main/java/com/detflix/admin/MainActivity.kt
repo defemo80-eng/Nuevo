@@ -270,6 +270,8 @@ fun DetflixAdminRoot(vm: AdminViewModel = viewModel()) {
                             onSaveContent = vm::saveContent,
                             onToggleContentAvailable = vm::toggleContentAvailable,
                             onDeleteContent = vm::deleteContent,
+                            onSaveEpisode = vm::saveEpisode,
+                            onDeleteEpisode = vm::deleteEpisode,
                             onExportCatalog = {
                                 vm.exportCatalogJson { json ->
                                     copyTextToClipboard(context, "catalog.json", json)

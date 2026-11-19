@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -353,6 +354,39 @@ fun MembershipScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // Legal Sources & Transparency
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DetflixSurface),
+                border = BorderStroke(1.dp, DetflixBorder),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.VerifiedUser, contentDescription = null, tint = DetflixSuccess)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Fuentes Legales y Licencias", style = MaterialTheme.typography.titleMedium, color = DetflixWhite)
+                    }
+                    Text(
+                        text = "• Producciones Abiertas (CC-BY): Obras de Blender Foundation con licencia libre verificada.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = DetflixTextSecondary
+                    )
+                    Text(
+                        text = "• Dominio Público (Internet Archive): Películas, cine negro, series clásicas, animación retro, documentales y avances públicos libres de derechos.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = DetflixTextSecondary
+                    )
+                    Text(
+                        text = "• Catálogo del Administrador: Títulos, series, novelas y capítulos autorizados publicados directamente desde DETFLIX Admin APK o tu feed JSON.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = DetflixTextSecondary
+                    )
                 }
             }
         }
