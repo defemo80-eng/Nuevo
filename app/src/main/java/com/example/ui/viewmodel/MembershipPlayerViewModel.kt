@@ -101,8 +101,15 @@ class MembershipPlayerViewModel(private val repository: DetflixRepository) : Vie
     fun refreshExpiration() {
         val uid = currentUserId.value ?: return
         viewModelScope.launch {
-            repository.checkAndUpdateMembershipExpiration(uid)
+            if (repository.verifyActiveSessionAndCode(uid)) {
+                repository.checkAndUpdateMembershipExpiration(uid)
+            }
         }
+    }
+
+    suspend fun verifySessionNotRevoked(): Boolean {
+        val uid = currentUserId.value ?: return false
+        return repository.verifyActiveSessionAndCode(uid)
     }
 
     fun redeemCode(code: String) {

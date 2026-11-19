@@ -55,9 +55,17 @@ class AuthProfileViewModel(private val repository: DetflixRepository) : ViewMode
         viewModelScope.launch {
             repository.initializeApp()
         }
+        viewModelScope.launch {
+            repository.sessionClosedReason.collect { reason ->
+                if (!reason.isNullOrBlank()) {
+                    _authUiState.update { it.copy(errorMessage = reason) }
+                }
+            }
+        }
     }
 
     fun clearMessages() {
+        repository.clearSessionClosedReason()
         _authUiState.update { it.copy(errorMessage = null, infoMessage = null) }
     }
 

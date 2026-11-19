@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.text.Normalizer
 
 data class SearchFilterState(
     val query: String = "",
@@ -29,13 +30,25 @@ data class SearchFilterState(
     val selectedYear: Int? = null,
     val selectedLanguage: String? = null,
     val sortByPopularity: Boolean = true
-)
+) {
+    val hasActiveQueryOrFilters: Boolean
+        get() = query.isNotBlank() ||
+            selectedType != null ||
+            selectedCategory != null ||
+            selectedYear != null ||
+            selectedLanguage != null
+}
 
 data class HomeFeedState(
     val featured: List<CatalogItem> = emptyList(),
+    val topTen: List<CatalogItem> = emptyList(),
     val latestReleases: List<CatalogItem> = emptyList(),
     val popularSeries: List<CatalogItem> = emptyList(),
     val novelas: List<CatalogItem> = emptyList(),
+    val actionSciFi: List<CatalogItem> = emptyList(),
+    val horrorSuspense: List<CatalogItem> = emptyList(),
+    val comedyFamily: List<CatalogItem> = emptyList(),
+    val docsAndSports: List<CatalogItem> = emptyList(),
     val recommended: List<CatalogItem> = emptyList(),
     val trending: List<CatalogItem> = emptyList(),
     val continueWatching: List<ContinueWatchingEntry> = emptyList(),
@@ -63,13 +76,17 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
     private val continueWatchingFlow = currentProfileId
         .flatMapLatest { pid -> if (pid == null) flowOf(emptyList()) else repository.observeContinueWatching(pid) }
 
+    private fun normalize(text: String): String {
+        val decomposed = Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
+        return Regex("\\p{InCombiningDiacriticalMarks}+").replace(decomposed, "")
+    }
+
     val homeFeed: StateFlow<HomeFeedState> = combine(
         repository.observeCatalogWithEpisodes(),
         activeProfile,
         favoriteIds,
         continueWatchingFlow
     ) { rawCatalog, profile, favs, continueList ->
-        // Apply Kids parental control filter when Kids profile is active
         val catalog = if (profile?.isKids == true) {
             rawCatalog.filter {
                 it.ageRating.isAllowedForKids() ||
@@ -97,14 +114,35 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
                 }
                 item.popularityScore + genreBoost
             }
-            .take(10)
+            .take(12)
 
         HomeFeedState(
-            featured = catalog.filter { it.isFeatured }.ifEmpty { catalog.take(4) },
+            featured = catalog.filter { it.isFeatured }.ifEmpty { catalog.take(5) },
+            topTen = catalog.sortedByDescending { it.popularityScore }.take(10),
             latestReleases = catalog.filter { it.isNewRelease }.sortedByDescending { it.year },
             popularSeries = catalog.filter { it.type == ContentType.SERIES }.sortedByDescending { it.popularityScore },
             novelas = catalog.filter {
                 it.type == ContentType.NOVELA || it.categories.any { c -> c.equals("Novelas", ignoreCase = true) }
+            }.sortedByDescending { it.popularityScore },
+            actionSciFi = catalog.filter { item ->
+                item.categories.any {
+                    it.equals("Acción", true) || it.equals("Ciencia ficción", true) || it.equals("Aventura", true)
+                }
+            }.sortedByDescending { it.popularityScore },
+            horrorSuspense = catalog.filter { item ->
+                item.categories.any {
+                    it.equals("Terror", true) || it.equals("Suspenso", true)
+                }
+            }.sortedByDescending { it.popularityScore },
+            comedyFamily = catalog.filter { item ->
+                item.categories.any {
+                    it.equals("Comedia", true) || it.equals("Romance", true) || it.equals("Infantil", true) || it.equals("Animación", true)
+                }
+            }.sortedByDescending { it.popularityScore },
+            docsAndSports = catalog.filter { item ->
+                item.type == ContentType.DOCUMENTARY || item.categories.any {
+                    it.equals("Documentales", true) || it.equals("Deportes", true)
+                }
             }.sortedByDescending { it.popularityScore },
             recommended = recommended,
             trending = catalog.filter { it.isTrending }.sortedByDescending { it.popularityScore },
@@ -122,18 +160,20 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
         homeFeed,
         _searchFilters
     ) { feed, filters ->
-        val q = filters.query.trim().lowercase()
+        val q = normalize(filters.query.trim())
         feed.allItems.filter { item ->
             val matchesQuery = q.isBlank() ||
-                item.title.lowercase().contains(q) ||
-                item.description.lowercase().contains(q) ||
-                item.director.lowercase().contains(q) ||
-                item.cast.any { it.lowercase().contains(q) } ||
-                item.categories.any { it.lowercase().contains(q) }
+                normalize(item.title).contains(q) ||
+                normalize(item.description).contains(q) ||
+                normalize(item.director).contains(q) ||
+                normalize(item.type.label).contains(q) ||
+                item.year.toString().contains(q) ||
+                item.cast.any { normalize(it).contains(q) } ||
+                item.categories.any { normalize(it).contains(q) }
 
             val matchesType = filters.selectedType == null || item.type == filters.selectedType
             val matchesCategory = filters.selectedCategory == null ||
-                item.categories.any { it.equals(filters.selectedCategory, ignoreCase = true) }
+                item.categories.any { normalize(it) == normalize(filters.selectedCategory) }
             val matchesYear = filters.selectedYear == null || item.year >= filters.selectedYear
             val matchesLanguage = filters.selectedLanguage == null ||
                 item.language.equals(filters.selectedLanguage, ignoreCase = true) ||
@@ -221,7 +261,7 @@ class CatalogViewModel(private val repository: DetflixRepository) : ViewModel() 
             val res = repository.syncCatalogNow()
             _isSyncing.value = false
             _syncMessage.value = if (res.isSuccess) {
-                "Catálogo sincronizado desde fuentes autorizadas (${res.getOrDefault(0)} elementos)."
+                "Catálogo sincronizado (${res.getOrDefault(0)} novedades)."
             } else {
                 "Modo sin conexión: usando catálogo local autorizado."
             }

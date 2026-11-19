@@ -42,15 +42,11 @@ class CatalogSyncEngine(
     suspend fun ensureSeeded() = withContext(Dispatchers.IO) {
         val dao = db.detflixDao()
         val seedItems = AuthorizedCatalogSeed.initialCatalog()
-        val missingItems = seedItems.filter { dao.getContentById(it.id) == null }
-        if (missingItems.isNotEmpty()) {
-            dao.upsertCatalogItems(missingItems)
-        }
-        val seedEpisodes = AuthorizedCatalogSeed.initialEpisodes()
-        if (missingItems.isNotEmpty() || dao.getCatalogCount() == 0) {
-            dao.upsertEpisodes(seedEpisodes)
-        }
-        if (dao.getCatalogCount() == seedItems.size && missingItems.size == seedItems.size) {
+        val hadAnyBefore = dao.getCatalogCount() > 0
+        dao.upsertCatalogItems(seedItems)
+        dao.upsertEpisodes(AuthorizedCatalogSeed.initialEpisodes())
+
+        if (!hadAnyBefore) {
             dao.insertNotifications(
                 listOf(
                     NotificationEntity(
@@ -78,6 +74,17 @@ class CatalogSyncEngine(
         }
     }
 
+    private fun themedPosterFor(categories: String, contentType: String): String {
+        val lower = categories.lowercase()
+        return when {
+            contentType == "NOVELA" || lower.contains("novela") || lower.contains("romance") -> "res://img_poster_novela"
+            lower.contains("terror") || lower.contains("suspenso") -> "res://img_poster_horror"
+            lower.contains("animación") || lower.contains("animacion") || lower.contains("infantil") || lower.contains("comedia") -> "res://img_poster_animation"
+            lower.contains("ciencia") || lower.contains("documental") -> "res://img_poster_scifi"
+            else -> "res://img_poster_fantasy"
+        }
+    }
+
     suspend fun syncFromAuthorizedSources(notifyUser: Boolean = true): Result<Int> = withContext(Dispatchers.IO) {
         ensureSeeded()
         val dao = db.detflixDao()
@@ -96,24 +103,29 @@ class CatalogSyncEngine(
                     httpClient.newCall(req).execute().use { resp ->
                         if (resp.isSuccessful) {
                             val body = resp.body?.string().orEmpty()
+                            val rootObj = if (!body.trim().startsWith("[")) runCatching { JSONObject(body) }.getOrNull() else null
                             val arr = if (body.trim().startsWith("[")) JSONArray(body)
-                            else JSONObject(body).optJSONArray("contents") ?: JSONArray()
+                            else rootObj?.optJSONArray("contents") ?: JSONArray()
                             for (i in 0 until arr.length()) {
                                 val obj = arr.getJSONObject(i)
                                 val id = obj.optString("id").ifBlank { continue }
                                 val streamUrl = obj.optString("streamUrl").ifBlank { continue }
                                 val existing = dao.getContentById(id)
                                 if (existing == null) addedCount++ else updatedCount++
+                                val cats = obj.optString("categories", "Acción")
+                                val type = obj.optString("type", "MOVIE")
+                                val rawPoster = obj.optString("posterUrl", "").ifBlank { themedPosterFor(cats, type) }
+                                val rawBackdrop = obj.optString("backdropUrl", rawPoster).ifBlank { rawPoster }
                                 discoveredItems.add(
                                     CatalogContentEntity(
                                         id = id,
                                         title = obj.optString("title", "Sin título"),
                                         description = obj.optString("description", ""),
-                                        posterUrl = obj.optString("posterUrl", ""),
-                                        backdropUrl = obj.optString("backdropUrl", obj.optString("posterUrl", "")),
+                                        posterUrl = rawPoster,
+                                        backdropUrl = rawBackdrop,
                                         streamUrl = streamUrl,
-                                        type = obj.optString("type", "MOVIE"),
-                                        categoriesCsv = obj.optString("categories", "Acción"),
+                                        type = type,
+                                        categoriesCsv = cats,
                                         year = obj.optInt("year", 2025),
                                         durationMinutes = obj.optInt("durationMinutes", 90),
                                         language = obj.optString("language", "Español"),
@@ -140,18 +152,16 @@ class CatalogSyncEngine(
                 }
             }
 
-            // 2. Live sync across 6 Internet Archive public-domain collections (movies, series, novelas, docs, cartoons)
+            // 2. Live sync across Internet Archive public-domain collections (limited so curated catalog stays crisp)
             val queries = listOf(
                 Triple("collection:feature_films AND mediatype:movies", "Drama,Suspenso,Acción", "MOVIE"),
-                Triple("collection:feature_films AND (subject:romance OR subject:drama) AND mediatype:movies", "Novelas,Romance,Drama", "NOVELA"),
                 Triple("collection:classic_cartoons AND mediatype:movies", "Animación,Infantil,Comedia", "MOVIE"),
                 Triple("collection:SciFi_Horror AND mediatype:movies", "Ciencia ficción,Terror", "MOVIE"),
-                Triple("collection:classic_tv AND mediatype:movies", "Comedia,Aventura,Romance", "SERIES"),
                 Triple("collection:prelinger AND mediatype:movies", "Documentales,Deportes", "DOCUMENTARY")
             )
 
             for ((query, defaultCats, contentType) in queries) {
-                val searchResp = runCatching { api.searchPublicDomainMedia(query = query, rows = 6) }.getOrNull() ?: continue
+                val searchResp = runCatching { api.searchPublicDomainMedia(query = query, rows = 3) }.getOrNull() ?: continue
                 val docs = searchResp.response?.docs.orEmpty()
                 for (doc in docs) {
                     if (doc.identifier.isBlank() || doc.title.isNullOrBlank()) continue
@@ -162,7 +172,7 @@ class CatalogSyncEngine(
                     } ?: continue
 
                     val streamUrl = "https://archive.org/download/${doc.identifier}/${mp4File.name}"
-                    val posterUrl = "https://archive.org/services/img/${doc.identifier}"
+                    val posterUrl = themedPosterFor(defaultCats, contentType)
                     val descText = when (val d = doc.description) {
                         is String -> d.replace(Regex("<[^>]*>"), "").trim()
                         is List<*> -> d.firstOrNull()?.toString()?.replace(Regex("<[^>]*>"), "")?.trim().orEmpty()
@@ -191,20 +201,20 @@ class CatalogSyncEngine(
                             categoriesCsv = defaultCats,
                             year = parsedYear.coerceIn(1910, 2026),
                             durationMinutes = if (contentType == "SERIES") 25 else 78,
-                            language = "Inglés",
+                            language = "Español",
                             availableLanguagesCsv = "Inglés,Español (Sub)",
                             subtitlesCsv = "Español,Inglés",
                             ageRating = if (defaultCats.contains("Infantil")) "TP" else "+12",
                             castCsv = creator,
                             director = creator,
                             rating = 7.9,
-                            popularityScore = 78 + ((doc.downloads ?: 0).coerceAtMost(20000) / 1000),
+                            popularityScore = 72 + ((doc.downloads ?: 0).coerceAtMost(12000) / 1000),
                             isFeatured = false,
-                            isNewRelease = existing == null,
-                            isTrending = (doc.downloads ?: 0) > 4000,
+                            isNewRelease = false,
+                            isTrending = false,
                             isNewAddition = true,
                             isAvailable = true,
-                            sourceName = "Internet Archive Live Sync",
+                            sourceName = "Archivo Clásico DETFLIX",
                             seasonsCount = 1,
                             updatedAt = now
                         )

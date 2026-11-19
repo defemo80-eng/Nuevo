@@ -188,3 +188,51 @@ exports.expireMemberships = onSchedule("every 24 hours", async () => {
   });
   await batch.commit();
 });
+
+// 5. Revocar código desde Admin y suspender membresía asociada
+exports.revokeAccessCode = onCall(async (request) => {
+  await assertAdmin(request.auth?.uid, request.auth?.token);
+  const code = String(request.data?.code || "").trim().toUpperCase();
+  if (!code) throw new HttpsError("invalid-argument", "Código requerido.");
+
+  const codeRef = db.collection("access_codes").doc(code);
+  const snap = await codeRef.get();
+  await codeRef.set({
+    status: "revoked",
+    revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+    revokedBy: request.auth.uid
+  }, { merge: true });
+
+  const usedBy = snap.exists ? snap.data()?.usedByUserId : null;
+  if (usedBy) {
+    await db.collection("memberships").doc(usedBy).set({
+      status: "SUSPENDED",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
+  return { success: true, code };
+});
+
+// 6. Verificar estado activo de código/membresía desde DETFLIX APP
+exports.checkAccessStatus = onRequest({ cors: true }, async (req, res) => {
+  const code = String(req.query?.code || req.body?.code || "").trim().toUpperCase();
+  const userId = String(req.query?.userId || req.body?.userId || "").trim();
+  try {
+    let revoked = false;
+    if (code) {
+      const codeSnap = await db.collection("access_codes").doc(code).get();
+      if (codeSnap.exists && ["revoked", "cancelled"].includes(String(codeSnap.data()?.status || "").toLowerCase())) {
+        revoked = true;
+      }
+    }
+    if (!revoked && userId) {
+      const memSnap = await db.collection("memberships").doc(userId).get();
+      if (memSnap.exists && ["SUSPENDED", "CANCELLED"].includes(String(memSnap.data()?.status || "").toUpperCase())) {
+        revoked = true;
+      }
+    }
+    return res.json({ active: !revoked, revoked });
+  } catch (err) {
+    return res.status(500).json({ active: true, revoked: false, error: err.message });
+  }
+});

@@ -53,7 +53,7 @@ class DetflixRepositoryRobolectricTest {
         val savedAttempt = repo.enterSavedAccount(user.uid)
         assertTrue(savedAttempt.isSuccess)
 
-        // 5. Verify all 12 categories exist across the authorized seeded catalog
+        // 5. Verify all 13 categories exist across the authorized seeded catalog
         val catalog = repo.observeCatalogWithEpisodes().first()
         val presentCategories = catalog.flatMap { it.categories }.toSet()
         for (cat in DetflixCategory.entries) {
@@ -62,5 +62,32 @@ class DetflixRepositoryRobolectricTest {
                 presentCategories.any { it.equals(cat.displayName, ignoreCase = true) }
             )
         }
+    }
+
+    @Test
+    fun revokedCodeClosesActiveSessionAndBlocksReentry() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = DetflixRepository(context)
+        repo.initializeApp()
+
+        val body = "DFX-9M2K-4P7R"
+        val validCode = "$body-${DetflixCrypto.computeTag(body)}"
+        val entryResult = repo.enterWithNameAndCode("Lucia Viewer", validCode)
+        assertTrue(entryResult.isSuccess)
+        val user = entryResult.getOrThrow()
+
+        // Mark code as CANCELLED (simulating admin revocation synced to local store / provider)
+        val dao = com.example.data.local.AppDatabase.getInstance(context).detflixDao()
+        val codeEntity = dao.getAccessCode(validCode)!!
+        dao.upsertAccessCode(codeEntity.copy(status = "CANCELLED"))
+
+        val stillValid = repo.verifyActiveSessionAndCode(user.uid)
+        assertTrue(!stillValid)
+        assertEquals(null, repo.observeCurrentUserId().first())
+        assertEquals("SUSPENDED", repo.observeMembership(user.uid).first()?.status)
+
+        // Saved account re-entry MUST fail when the code was revoked
+        val reEntryAttempt = repo.enterSavedAccount(user.uid)
+        assertTrue(reEntryAttempt.isFailure)
     }
 }

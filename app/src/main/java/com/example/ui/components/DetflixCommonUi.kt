@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
@@ -65,6 +65,63 @@ import com.example.ui.theme.DetflixSurface
 import com.example.ui.theme.DetflixSurfaceElevated
 import com.example.ui.theme.DetflixTextSecondary
 import com.example.ui.theme.DetflixWhite
+import java.util.Locale
+
+@DrawableRes
+fun resolveFallbackPosterRes(
+    url: String,
+    categories: List<String>,
+    contentType: ContentType
+): Int {
+    return when (url.trim()) {
+        "res://img_poster_fantasy" -> R.drawable.img_poster_fantasy
+        "res://img_poster_scifi" -> R.drawable.img_poster_scifi
+        "res://img_poster_novela" -> R.drawable.img_poster_novela
+        "res://img_poster_horror" -> R.drawable.img_poster_horror
+        "res://img_poster_animation" -> R.drawable.img_poster_animation
+        else -> {
+            val joined = categories.joinToString(" ").lowercase()
+            when {
+                contentType == ContentType.NOVELA || joined.contains("novela") || joined.contains("romance") ->
+                    R.drawable.img_poster_novela
+                joined.contains("terror") || joined.contains("suspenso") ->
+                    R.drawable.img_poster_horror
+                joined.contains("animacion") || joined.contains("animación") || joined.contains("infantil") || joined.contains("comedia") ->
+                    R.drawable.img_poster_animation
+                joined.contains("ciencia") || joined.contains("documental") || joined.contains("deportes") ->
+                    R.drawable.img_poster_scifi
+                else -> R.drawable.img_poster_fantasy
+            }
+        }
+    }
+}
+
+@Composable
+fun DetflixArtworkImage(
+    url: String,
+    contentDescription: String,
+    categories: List<String>,
+    contentType: ContentType,
+    modifier: Modifier = Modifier
+) {
+    val fallbackRes = resolveFallbackPosterRes(url, categories, contentType)
+    Box(modifier = modifier.background(DetflixSurface)) {
+        Image(
+            painter = painterResource(id = fallbackRes),
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        if (url.startsWith("https://", ignoreCase = true)) {
+            AsyncImage(
+                model = url,
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
 
 @Composable
 fun DetflixBrandMark(
@@ -149,97 +206,95 @@ fun PosterCard(
     item: CatalogItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = 132.dp
+    width: Dp = 128.dp
 ) {
     Card(
         modifier = modifier
             .width(width)
             .testTag("poster_card_${item.id}")
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = DetflixSurfaceElevated),
-        border = BorderStroke(1.dp, DetflixBorder.copy(alpha = 0.6f))
+        border = BorderStroke(1.dp, DetflixBorder.copy(alpha = 0.5f))
     ) {
-        Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.68f)
+                .background(DetflixSurface)
+        ) {
+            DetflixArtworkImage(
+                url = item.posterUrl,
+                contentDescription = item.title,
+                categories = item.categories,
+                contentType = item.type,
+                modifier = Modifier.fillMaxSize()
+            )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.72f)
-                    .background(DetflixSurface)
-            ) {
-                AsyncImage(
-                    model = item.posterUrl,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Transparent,
-                                    DetflixBlack.copy(alpha = 0.85f)
-                                )
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                DetflixBlack.copy(alpha = 0.2f),
+                                Color.Transparent,
+                                DetflixBlack.copy(alpha = 0.92f)
                             )
                         )
-                )
-                // Top-left type / new badge
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (item.type == ContentType.SERIES) {
-                        BadgePill(text = "SERIE", background = DetflixRed)
-                    } else if (item.isNewRelease) {
-                        BadgePill(text = "ESTRENO", background = DetflixRed)
-                    }
-                }
-                // Rating bottom-right
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = DetflixGold,
-                        modifier = Modifier.size(12.dp)
                     )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = String.format("%.1f", item.rating),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = DetflixWhite
-                    )
-                }
-                // Fallback icon if image fails subtly behind
-                if (item.posterUrl.isBlank()) {
-                    Icon(
-                        imageVector = Icons.Filled.Movie,
-                        contentDescription = null,
-                        tint = DetflixTextSecondary,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(32.dp)
-                    )
+            )
+            // Top-left type / new badge
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                when {
+                    item.type == ContentType.NOVELA -> BadgePill(text = "NOVELA", background = DetflixRed)
+                    item.type == ContentType.SERIES -> BadgePill(text = "SERIE", background = DetflixRed)
+                    item.type == ContentType.DOCUMENTARY -> BadgePill(text = "DOC", background = DetflixSurfaceElevated)
+                    item.isNewRelease -> BadgePill(text = "ESTRENO", background = DetflixRed)
                 }
             }
-            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+            // Rating top-right
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(DetflixBlack.copy(alpha = 0.65f))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = DetflixGold,
+                    modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = String.format(Locale.US, "%.1f", item.rating),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = DetflixWhite
+                )
+            }
+            // Title overlay inside bottom poster gradient (Netflix style)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+            ) {
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
                     color = DetflixWhite,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "${item.year} • ${item.ageRating.code}",
                     style = MaterialTheme.typography.labelSmall,
@@ -272,10 +327,11 @@ fun ContinueWatchingCard(
                     .fillMaxWidth()
                     .height(118.dp)
             ) {
-                AsyncImage(
-                    model = entry.episode?.thumbnailUrl ?: entry.item.backdropUrl,
+                DetflixArtworkImage(
+                    url = entry.episode?.thumbnailUrl ?: entry.item.backdropUrl,
                     contentDescription = entry.item.title,
-                    contentScale = ContentScale.Crop,
+                    categories = entry.item.categories,
+                    contentType = entry.item.type,
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(

@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.net.Uri
 import com.example.data.local.AccessCodeEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.CatalogContentEntity
@@ -19,14 +20,14 @@ import com.example.data.model.CatalogItem
 import com.example.data.model.ContentType
 import com.example.data.model.ContinueWatchingEntry
 import com.example.data.model.EpisodeItem
-import com.example.data.model.MembershipStatus
 import com.example.data.security.DetflixCrypto
 import com.example.data.sync.CatalogSyncEngine
 import com.example.notifications.DetflixNotifier
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -40,10 +41,18 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class DetflixRepository(private val context: Context) {
+    companion object {
+        private val ADMIN_REVOCATIONS_URI: Uri =
+            Uri.parse("content://com.aistudio.detflix.admin.revocations/revoked")
+    }
+
     private val db = AppDatabase.getInstance(context)
     private val dao = db.detflixDao()
     val prefs = SessionPreferences(context)
     private val syncEngine = CatalogSyncEngine(context, db = db, prefs = prefs)
+
+    private val _sessionClosedReason = MutableStateFlow<String?>(null)
+    val sessionClosedReason: StateFlow<String?> = _sessionClosedReason.asStateFlow()
 
     private val httpClient by lazy {
         OkHttpClient.Builder()
@@ -54,6 +63,14 @@ class DetflixRepository(private val context: Context) {
 
     suspend fun initializeApp() = withContext(Dispatchers.IO) {
         syncEngine.ensureSeeded()
+        val uid = prefs.currentUserId.first()
+        if (uid != null) {
+            verifyActiveSessionAndCode(uid)
+        }
+    }
+
+    fun clearSessionClosedReason() {
+        _sessionClosedReason.value = null
     }
 
     suspend fun syncCatalogNow(): Result<Int> = syncEngine.syncFromAuthorizedSources(notifyUser = true)
@@ -116,6 +133,135 @@ class DetflixRepository(private val context: Context) {
             }
         }
 
+    /**
+     * Queries the standalone DETFLIX Admin APK (if installed on the same device)
+     * for revoked access codes and suspended client names.
+     */
+    private fun queryLocalAdminRevocations(): Pair<Set<String>, Set<String>> {
+        val revokedCodes = mutableSetOf<String>()
+        val suspendedClients = mutableSetOf<String>()
+        runCatching {
+            context.contentResolver.query(ADMIN_REVOCATIONS_URI, null, null, null, null)?.use { cursor ->
+                val typeIdx = cursor.getColumnIndex("entry_type")
+                val valIdx = cursor.getColumnIndex("entry_value")
+                if (typeIdx >= 0 && valIdx >= 0) {
+                    while (cursor.moveToNext()) {
+                        val entryType = cursor.getString(typeIdx)?.trim().orEmpty()
+                        val entryVal = cursor.getString(valIdx)?.trim().orEmpty()
+                        if (entryVal.isNotEmpty()) {
+                            if (entryType == "CODE") revokedCodes.add(entryVal.uppercase())
+                            else if (entryType == "CLIENT") suspendedClients.add(entryVal.lowercase())
+                        }
+                    }
+                }
+            }
+        }
+        return revokedCodes to suspendedClients
+    }
+
+    private fun checkRemoteAccessRevoked(
+        gatewayUrl: String,
+        code: String?,
+        userId: String,
+        displayName: String
+    ): Pair<Boolean, Boolean> {
+        // Returns (isCodeRevoked, isUserSuspended)
+        if (gatewayUrl.isBlank()) return false to false
+        return runCatching {
+            val endpoint = gatewayUrl.trimEnd('/') + "/checkAccessStatus"
+            val json = JSONObject().apply {
+                put("userId", userId)
+                put("displayName", displayName)
+                if (!code.isNullOrBlank()) put("code", code)
+            }
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(json.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@runCatching false to false
+                val parsed = JSONObject(resp.body?.string().orEmpty())
+                val codeRevoked = parsed.optBoolean("revoked", false)
+                val userSuspended = parsed.optBoolean("suspended", false)
+                codeRevoked to userSuspended
+            }
+        }.getOrDefault(false to false)
+    }
+
+    /**
+     * Checks whether the active session's user or access code was revoked/suspended
+     * by DETFLIX Admin (locally via ContentProvider/Room or remotely via Firebase).
+     * Immediately signs out and clears active session if revoked.
+     * Returns true if session remains valid, false if revoked and signed out.
+     */
+    suspend fun verifyActiveSessionAndCode(userId: String): Boolean = withContext(Dispatchers.IO) {
+        val user = dao.getUserById(userId)
+        val membership = dao.getMembership(userId)
+        val lastCode = membership?.lastCodeUsed?.trim()?.uppercase()
+        val localCode = lastCode?.let { dao.getAccessCode(it) }
+
+        val (adminRevokedCodes, adminSuspendedClients) = queryLocalAdminRevocations()
+        val gatewayUrl = prefs.cloudGatewayUrl.first()
+        val (remoteCodeRevoked, remoteSuspended) = checkRemoteAccessRevoked(
+            gatewayUrl = gatewayUrl,
+            code = lastCode,
+            userId = userId,
+            displayName = user?.displayName.orEmpty()
+        )
+
+        val clientSuspended = (user == null) ||
+            user.isSuspended ||
+            (user.displayName.trim().lowercase() in adminSuspendedClients) ||
+            remoteSuspended
+
+        val codeRevoked = (membership?.status == "SUSPENDED") ||
+            (localCode?.status == "CANCELLED") ||
+            (lastCode != null && lastCode in adminRevokedCodes) ||
+            remoteCodeRevoked
+
+        if (clientSuspended || codeRevoked) {
+            val now = System.currentTimeMillis()
+            if (lastCode != null) {
+                val baseCode = localCode ?: AccessCodeEntity(
+                    code = lastCode,
+                    status = "CANCELLED",
+                    durationDays = 30,
+                    createdAt = now,
+                    activatedAt = membership?.activatedAt,
+                    expiresAt = membership?.expiresAt,
+                    usedByUserId = userId
+                )
+                dao.upsertAccessCode(baseCode.copy(status = "CANCELLED"))
+            }
+            if (membership != null && membership.status != "SUSPENDED") {
+                dao.upsertMembership(membership.copy(status = "SUSPENDED", updatedAt = now))
+            }
+            if (clientSuspended && user != null && !user.isSuspended) {
+                dao.insertUser(user.copy(isSuspended = true))
+            }
+            val msg = if (clientSuspended) {
+                "Tu acceso fue suspendido por el administrador de DETFLIX."
+            } else {
+                "El código de acceso ${lastCode ?: ""} fue revocado por el administrador. Tu sesión se cerró."
+            }
+            dao.insertNotification(
+                NotificationEntity(
+                    id = "revoked_${userId}_${lastCode ?: "acc"}",
+                    userId = userId,
+                    title = "Sesión cerrada por administración",
+                    message = msg,
+                    type = "MEMBERSHIP_EXPIRED",
+                    isRead = false,
+                    createdAt = now
+                )
+            )
+            _sessionClosedReason.value = msg
+            logout()
+            return@withContext false
+        }
+        true
+    }
+
     // --- Authentication (Nombre + Código de acceso) ---
     suspend fun enterWithNameAndCode(
         displayName: String,
@@ -128,6 +274,22 @@ class DetflixRepository(private val context: Context) {
         }
         if (code.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Ingresa el código de acceso entregado por el administrador."))
+        }
+
+        val (adminRevokedCodes, adminSuspendedClients) = queryLocalAdminRevocations()
+        if (cleanName.lowercase() in adminSuspendedClients) {
+            return@withContext Result.failure(IllegalStateException("Tu acceso ha sido suspendido por el administrador."))
+        }
+        if (code in adminRevokedCodes) {
+            dao.upsertAccessCode(
+                AccessCodeEntity(
+                    code = code,
+                    status = "CANCELLED",
+                    durationDays = 30,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+            return@withContext Result.failure(IllegalStateException("Este código fue revocado por el administrador y ya no es válido."))
         }
 
         val existingUser = dao.getUserByDisplayName(cleanName)
@@ -149,7 +311,7 @@ class DetflixRepository(private val context: Context) {
                         when (existingCode.status) {
                             "USED" -> "Este código ya fue utilizado y no puede reutilizarse."
                             "EXPIRED" -> "Este código ya expiró."
-                            "CANCELLED" -> "Este código fue cancelado por el administrador."
+                            "CANCELLED" -> "Este código fue revocado por el administrador."
                             else -> "El código no está disponible."
                         }
                     )
@@ -211,6 +373,7 @@ class DetflixRepository(private val context: Context) {
                 source = "FIREBASE_CLOUD_FUNCTION"
             )
             dao.activateMembershipWithCode(user.uid, codeEntity, membership, renewal)
+            _sessionClosedReason.value = null
             prefs.setSession(user.uid, profile.id)
             return@withContext Result.success(user)
         }
@@ -250,6 +413,7 @@ class DetflixRepository(private val context: Context) {
             )
         }
 
+        _sessionClosedReason.value = null
         prefs.setSession(user.uid, profile.id)
         Result.success(user)
     }
@@ -257,9 +421,27 @@ class DetflixRepository(private val context: Context) {
     suspend fun enterSavedAccount(uid: String): Result<UserEntity> = withContext(Dispatchers.IO) {
         val user = dao.getUserById(uid)
             ?: return@withContext Result.failure(IllegalArgumentException("Cuenta no encontrada en este dispositivo."))
-        if (user.isSuspended) {
+        val membership = dao.getMembership(uid)
+        val lastCode = membership?.lastCodeUsed?.trim()?.uppercase()
+        val localCode = lastCode?.let { dao.getAccessCode(it) }
+        val (adminRevokedCodes, adminSuspendedClients) = queryLocalAdminRevocations()
+
+        if (user.isSuspended || user.displayName.trim().lowercase() in adminSuspendedClients) {
             return@withContext Result.failure(IllegalStateException("Tu acceso ha sido suspendido por el administrador."))
         }
+        if (membership?.status == "SUSPENDED" || localCode?.status == "CANCELLED" || (lastCode != null && lastCode in adminRevokedCodes)) {
+            if (lastCode != null) {
+                val baseCode = localCode ?: AccessCodeEntity(code = lastCode, status = "CANCELLED", createdAt = System.currentTimeMillis())
+                dao.upsertAccessCode(baseCode.copy(status = "CANCELLED"))
+            }
+            if (membership != null && membership.status != "SUSPENDED") {
+                dao.upsertMembership(membership.copy(status = "SUSPENDED", updatedAt = System.currentTimeMillis()))
+            }
+            return@withContext Result.failure(
+                IllegalStateException("Tu código anterior fue revocado. Ingresa tu nombre y un nuevo código de acceso.")
+            )
+        }
+
         val profiles = dao.getProfilesForUser(user.uid)
         val firstProfile = profiles.firstOrNull() ?: ProfileEntity(
             id = "prof_${UUID.randomUUID().toString().take(10)}",
@@ -271,6 +453,7 @@ class DetflixRepository(private val context: Context) {
             createdAt = System.currentTimeMillis()
         ).also { dao.upsertProfile(it) }
 
+        _sessionClosedReason.value = null
         prefs.setSession(user.uid, firstProfile.id)
         checkAndUpdateMembershipExpiration(user.uid)
         Result.success(user)
@@ -425,7 +608,15 @@ class DetflixRepository(private val context: Context) {
                 }
             }
 
-            // 2. Local cryptographic verification matching DETFLIX ADMIN WEB generator
+            // 2. Local revocation & cryptographic verification matching DETFLIX ADMIN
+            val (adminRevokedCodes, adminSuspendedClients) = queryLocalAdminRevocations()
+            if (user.displayName.trim().lowercase() in adminSuspendedClients) {
+                return@withContext Result.failure(IllegalStateException("Tu acceso fue suspendido por administración."))
+            }
+            if (code in adminRevokedCodes) {
+                dao.upsertAccessCode(AccessCodeEntity(code = code, status = "CANCELLED", createdAt = System.currentTimeMillis()))
+                return@withContext Result.failure(IllegalStateException("Este código fue revocado por el administrador."))
+            }
             if (!DetflixCrypto.isValidAccessCodeFormatAndSignature(code)) {
                 return@withContext Result.failure(
                     IllegalArgumentException("Código inválido o no emitido por DETFLIX ADMIN. Formato requerido: DFX-XXXX-XXXX-XXXX")
@@ -440,7 +631,7 @@ class DetflixRepository(private val context: Context) {
                         when (existingCode.status) {
                             "USED" -> "Este código ya fue utilizado y no puede reutilizarse."
                             "EXPIRED" -> "Este código ya expiró."
-                            "CANCELLED" -> "Este código fue cancelado por el administrador."
+                            "CANCELLED" -> "Este código fue revocado por el administrador."
                             else -> "El código no está disponible."
                         }
                     )

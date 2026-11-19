@@ -29,17 +29,22 @@ import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -63,6 +68,9 @@ import com.example.ui.theme.DetflixWhite
 import com.example.ui.viewmodel.AuthProfileViewModel
 import com.example.ui.viewmodel.CatalogViewModel
 import com.example.ui.viewmodel.MembershipPlayerViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 private sealed class DetflixTab(
     val route: String,
@@ -111,8 +119,25 @@ fun DetflixRootApp() {
         factory = MembershipPlayerViewModel.Factory(repository)
     )
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(lifecycleOwner, currentUserId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                membershipVm.refreshExpiration()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(currentUserId) {
         membershipVm.refreshExpiration()
+        while (isActive) {
+            delay(4_000L)
+            membershipVm.verifySessionNotRevoked()
+        }
     }
 
     val homeFeed by catalogVm.homeFeed.collectAsStateWithLifecycle()
@@ -141,13 +166,17 @@ fun DetflixRootApp() {
     var showMembershipGate by remember { mutableStateOf(false) }
 
     fun attemptPlay(item: CatalogItem, episodeId: String?) {
-        val isMembershipValid = membershipState.status == MembershipStatus.ACTIVE ||
-            membershipState.status == MembershipStatus.EXPIRING_SOON
-        if (!isMembershipValid) {
-            showMembershipGate = true
-        } else {
-            val epArg = episodeId ?: "none"
-            navController.navigate("player/${item.id}/$epArg")
+        scope.launch {
+            val validSession = membershipVm.verifySessionNotRevoked()
+            if (!validSession) return@launch
+            val isMembershipValid = membershipState.status == MembershipStatus.ACTIVE ||
+                membershipState.status == MembershipStatus.EXPIRING_SOON
+            if (!isMembershipValid) {
+                showMembershipGate = true
+            } else {
+                val epArg = episodeId ?: "none"
+                navController.navigate("player/${item.id}/$epArg")
+            }
         }
     }
 
@@ -276,6 +305,7 @@ fun DetflixRootApp() {
                         SearchScreen(
                             filters = searchFilters,
                             results = searchResults,
+                            recommendedFallback = homeFeed.recommended,
                             onQueryChange = catalogVm::updateSearchQuery,
                             onToggleType = catalogVm::updateTypeFilter,
                             onToggleCategory = catalogVm::updateCategoryFilter,
@@ -283,7 +313,8 @@ fun DetflixRootApp() {
                             onToggleLanguage = catalogVm::updateLanguageFilter,
                             onToggleSort = catalogVm::toggleSortOrder,
                             onClearFilters = catalogVm::clearFilters,
-                            onItemClick = { item -> navController.navigate("detail/${item.id}") }
+                            onItemClick = { item -> navController.navigate("detail/${item.id}") },
+                            onPlayItem = { item, epId -> attemptPlay(item, epId) }
                         )
                     }
 

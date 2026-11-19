@@ -25,6 +25,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name=".data.AdminRevocationProvider"
+            android:authorities="com.aistudio.detflix.admin.revocations"
+            android:exported="true" />
     </application>
 
 </manifest>

@@ -63,6 +63,7 @@ import com.example.data.model.CatalogItem
 import com.example.data.model.ContentType
 import com.example.data.model.EpisodeItem
 import com.example.ui.components.BadgePill
+import com.example.ui.components.DetflixArtworkImage
 import com.example.ui.theme.DetflixBlack
 import com.example.ui.theme.DetflixBorder
 import com.example.ui.theme.DetflixGold
@@ -110,10 +111,11 @@ fun ContentDetailScreen(
                     .fillMaxWidth()
                     .height(290.dp)
             ) {
-                AsyncImage(
-                    model = item.backdropUrl,
+                DetflixArtworkImage(
+                    url = item.backdropUrl,
                     contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
+                    categories = item.categories,
+                    contentType = item.type,
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(
@@ -308,10 +310,11 @@ private fun EpisodeRowCard(
                     .clip(RoundedCornerShape(8.dp))
                     .background(DetflixSurfaceElevated)
             ) {
-                AsyncImage(
-                    model = episode.thumbnailUrl,
+                DetflixArtworkImage(
+                    url = episode.thumbnailUrl,
                     contentDescription = episode.title,
-                    contentScale = ContentScale.Crop,
+                    categories = emptyList(),
+                    contentType = ContentType.SERIES,
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(
